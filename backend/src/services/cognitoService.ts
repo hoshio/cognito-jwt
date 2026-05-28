@@ -56,6 +56,15 @@ export async function signIn(email: string, password: string): Promise<AuthToken
   const command = new InitiateAuthCommand(input);
   const response = await cognitoClient.send(command);
 
+  // チャレンジが返された場合（NEW_PASSWORD_REQUIRED など）
+  if (response.ChallengeName) {
+    console.error("[Cognito] Challenge required:", response.ChallengeName);
+    throw Object.assign(new Error(`Challenge required: ${response.ChallengeName}`), {
+      name: "ChallengeRequiredException",
+      challengeName: response.ChallengeName,
+    });
+  }
+
   const result = response.AuthenticationResult;
   if (
     !result?.AccessToken ||
@@ -136,6 +145,7 @@ export function mapCognitoError(err: unknown): { status: number; message: string
 
   switch (name) {
     case "NotAuthorizedException":
+      console.error("[Cognito] NotAuthorizedException:", message);
       return { status: 401, message: "Invalid email or password" };
     case "UserNotFoundException":
       return { status: 404, message: "User not found" };
@@ -145,6 +155,8 @@ export function mapCognitoError(err: unknown): { status: number; message: string
       return { status: 429, message: "Too many requests. Please try again later" };
     case "PasswordResetRequiredException":
       return { status: 403, message: "Password reset required" };
+    case "ChallengeRequiredException":
+      return { status: 403, message: `Authentication challenge required: ${(err as { challengeName?: string }).challengeName}` };
     default:
       console.error("Unhandled Cognito error:", name, message);
       return { status: 500, message: "Internal server error" };
