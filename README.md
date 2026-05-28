@@ -20,6 +20,82 @@ React
   ← ユーザー情報 (sub, email, groups など)
 ```
 
+## シーケンス図
+
+### ログイン
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as React<br/>(Frontend)
+    participant BE as Express<br/>(Backend)
+    participant Cognito as AWS Cognito
+
+    User->>FE: メール・パスワードを入力してログイン
+    FE->>BE: POST /api/auth/login<br/>{ email, password }
+    BE->>Cognito: InitiateAuth<br/>USER_PASSWORD_AUTH<br/>+ SECRET_HASH
+    Cognito-->>BE: { AccessToken, IdToken,<br/>RefreshToken, ExpiresIn }
+    BE-->>FE: 200 { accessToken, idToken,<br/>refreshToken, expiresIn }
+    FE->>FE: localStorage に保存
+    FE->>User: ホーム画面へ遷移
+```
+
+### 保護リソースへのアクセス
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as React<br/>(Frontend)
+    participant BE as Express<br/>(Backend)
+    participant JWKS as Cognito JWKS<br/>エンドポイント
+
+    User->>FE: ホーム画面を開く
+    FE->>BE: GET /api/profile<br/>Authorization: Bearer <accessToken>
+    BE->>BE: jwtMiddleware:<br/>Authorization ヘッダーを抽出
+    BE->>JWKS: 公開鍵を取得（初回のみ）
+    JWKS-->>BE: 公開鍵セット
+    BE->>BE: JWT 署名検証<br/>client_id / token_use を確認
+    BE-->>FE: 200 { sub, username, email, groups, ... }
+    FE->>User: ユーザー情報を表示
+```
+
+### トークンリフレッシュ
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as React<br/>(Frontend)
+    participant BE as Express<br/>(Backend)
+    participant Cognito as AWS Cognito
+
+    User->>FE: 操作（アクセストークン期限切れ）
+    FE->>BE: POST /api/auth/refresh<br/>{ refreshToken, sub }
+    BE->>Cognito: InitiateAuth<br/>REFRESH_TOKEN_AUTH<br/>+ SECRET_HASH
+    Cognito-->>BE: { AccessToken, IdToken, ExpiresIn }
+    BE-->>FE: 200 { accessToken, idToken, expiresIn }
+    FE->>FE: localStorage を更新
+    FE->>User: 操作を継続
+```
+
+### ログアウト
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as React<br/>(Frontend)
+    participant BE as Express<br/>(Backend)
+    participant Cognito as AWS Cognito
+
+    User->>FE: ログアウトボタンを押す
+    FE->>BE: POST /api/auth/logout<br/>Authorization: Bearer <accessToken>
+    BE->>BE: jwtMiddleware: JWT 検証
+    BE->>Cognito: GlobalSignOut<br/>（全デバイスのトークンを無効化）
+    Cognito-->>BE: 200 OK
+    BE-->>FE: 204 No Content
+    FE->>FE: localStorage をクリア
+    FE->>User: ログイン画面へ遷移
+```
+
 ## ディレクトリ構成
 
 ```
